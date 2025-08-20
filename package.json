@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "build": "next build",
-  "dev": "node ./node_modules/next/dist/bin/next dev",
+    "dev": "node ./node_modules/next/dist/bin/next dev",
     "lint": "next lint",
     "start": "next start"
   },
@@ -56,6 +56,7 @@
     "input-otp": "1.4.1",
     "jose": "latest",
     "leaflet": "^1.9.4",
+    "leaflet-control-geocoder": "^3.3.0",
     "lucide-react": "^0.454.0",
     "mongoose": "^8.17.1",
     "next": "15.2.4",
