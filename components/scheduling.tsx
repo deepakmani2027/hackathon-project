@@ -20,6 +20,8 @@ export default function Scheduling() {
   const { user } = useAuth();
   const [items, setItems] = useState<EwItem[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
+  // Only show certified vendors
+  const certifiedVendors = useMemo(() => vendors.filter(v => v.certified), [vendors]);
   const [pickups, setPickups] = useState<Pickup[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -58,7 +60,9 @@ export default function Scheduling() {
       setVendors(data.vendors || []);
       setPickups(data.pickups || []);
       if (data.vendors && data.vendors.length > 0) {
-        setVendorId(data.vendors[0]._id);
+        // Set default vendor to first certified vendor if available
+        const firstCertified = data.vendors.find((v: Vendor) => v.certified);
+        setVendorId(firstCertified ? firstCertified._id : "");
       }
     } catch (err: any) {
       setError(err.message);
@@ -200,13 +204,17 @@ export default function Scheduling() {
         <div className="flex flex-col gap-2">
           <Label>Vendor</Label>
           <Select value={vendorId} onValueChange={setVendorId}>
-            <SelectTrigger><SelectValue placeholder="Select vendor" /></SelectTrigger>
+            <SelectTrigger><SelectValue placeholder="Select certified vendor" /></SelectTrigger>
             <SelectContent>
-              {vendors.map((v) => (
-                <SelectItem key={v._id} value={v._id}>
-                  {v.name} {v.certified ? "• Certified" : "• Unverified"}
-                </SelectItem>
-              ))}
+              {certifiedVendors.length === 0 ? (
+                <div className="px-4 py-2 text-gray-500">No certified vendors available</div>
+              ) : (
+                certifiedVendors.map((v) => (
+                  <SelectItem key={v._id} value={v._id}>
+                    {v.name} • Certified
+                  </SelectItem>
+                ))
+              )}
             </SelectContent>
           </Select>
         </div>

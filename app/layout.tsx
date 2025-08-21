@@ -1,8 +1,10 @@
+
 import type { Metadata } from 'next'
 import { GeistSans } from 'geist/font/sans'
 import { GeistMono } from 'geist/font/mono'
 import './globals.css'
 import { AuthProvider } from '@/components/auth/auth-context'
+import ChatbotScript from '@/components/ChatbotScript'
 
 export const metadata: Metadata = {
   title: 'E-Waste Management',
@@ -31,7 +33,12 @@ html {
 }
         `}</style>
       </head>
-      <body><AuthProvider>{children}</AuthProvider></body>
+      <body>
+        <AuthProvider>
+          {children}
+          <ChatbotScript />
+        </AuthProvider>
+      </body>
     </html>
   )
 }
