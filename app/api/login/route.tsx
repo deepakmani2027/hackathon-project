@@ -8,6 +8,7 @@ const UserSchema = new mongoose.Schema({
   name: { type: String, required: true },
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
+  role: { type: String, enum: ['user', 'admin', 'vendor'], default: 'user' }
 }, { timestamps: true });
 
 const User = mongoose.models.User || mongoose.model('User', UserSchema);
@@ -63,6 +64,7 @@ export async function POST(request: NextRequest) {
       id: user._id,
       name: user.name,
       email: user.email,
+      role: user.role,
     };
     
     const token = await new SignJWT(userPayload)

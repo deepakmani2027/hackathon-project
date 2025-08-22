@@ -68,19 +68,19 @@ export async function POST(request: NextRequest) {
   try {
     await connectToDatabase();
     const body = await request.json();
-    const { itemIds, createdBy, ...pickupData } = body;
+    const { itemIds, ...pickupData } = body;
 
-    if (!itemIds || itemIds.length === 0 || !createdBy) {
-      return NextResponse.json({ message: 'Missing required fields: itemIds and createdBy.' }, { status: 400 });
+    if (!itemIds || itemIds.length === 0) {
+      return NextResponse.json({ message: 'Missing required fields: itemIds.' }, { status: 400 });
     }
 
     // Create the new pickup document
-    const newPickup = new Pickup({ ...pickupData, itemIds, createdBy });
+    const newPickup = new Pickup({ ...pickupData, itemIds });
     await newPickup.save();
 
     // Update the status of all included items in the database
     await Item.updateMany(
-      { _id: { $in: itemIds }, createdBy: createdBy },
+      { _id: { $in: itemIds } },
       { $set: { status: "Scheduled", pickupId: newPickup._id.toString() } }
     );
 

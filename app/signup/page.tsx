@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DotLottieReact } from '@lottiefiles/dotlottie-react'
 
 export default function SignupPage() {
@@ -29,6 +30,7 @@ function SignupScreen() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [confirm, setConfirm] = useState("")
+  const [role, setRole] = useState<'user' | 'admin' | 'vendor'>('user') // New state for role
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
 
@@ -56,7 +58,7 @@ function SignupScreen() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ name, email, password }),
+        body: JSON.stringify({ name, email, password, role }), // Include role in the request body
       });
 
       const data = await response.json();
@@ -244,6 +246,23 @@ function SignupScreen() {
                       />
                       <div className="absolute inset-0 rounded-md bg-gradient-to-r from-blue-500/0 via-blue-500/0 to-blue-500/0 hover:from-blue-500/10 hover:to-purple-500/10 transition-all duration-300 pointer-events-none"></div>
                     </div>
+                  </div>
+
+                  {/* Role Selection Dropdown */}
+                  <div className="space-y-2">
+                    <Label htmlFor="role" className="text-gray-800 font-medium">
+                      Account Type
+                    </Label>
+                    <Select value={role} onValueChange={(value: 'user' | 'admin' | 'vendor') => setRole(value)} disabled={pending}>
+                      <SelectTrigger className="bg-white/50 border-white/50 text-gray-800 placeholder:text-gray-500 focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 h-12 transition-all duration-300 hover:bg-white/70">
+                        <SelectValue placeholder="Select your role" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="user">User</SelectItem>
+                        <SelectItem value="vendor">Vendor</SelectItem>
+                        <SelectItem value="admin">Admin</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
 
                   <Button 

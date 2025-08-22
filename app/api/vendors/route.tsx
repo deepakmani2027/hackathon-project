@@ -6,8 +6,6 @@ const VendorSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   contact: { type: String, required: true, trim: true },
   certified: { type: Boolean, default: false },
-  // You can add a field to associate vendors with the user who created them
-  // createdBy: { type: String, required: true },
 }, { timestamps: true });
 
 const Vendor = mongoose.models.Vendor || mongoose.model('Vendor', VendorSchema);

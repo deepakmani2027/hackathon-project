@@ -14,7 +14,7 @@ const UserSchema = new mongoose.Schema({
   email: {
     type: String,
     required: [true, 'Please provide an email.'],
-    unique: true, // Ensures no two users can have the same email
+    unique: true,
     match: [
       /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/,
       'Please provide a valid email address.',
@@ -24,6 +24,11 @@ const UserSchema = new mongoose.Schema({
     type: String,
     required: [true, 'Please provide a password.'],
     minlength: 6,
+  },
+  role: {
+    type: String,
+    enum: ['user', 'admin', 'vendor'],
+    default: 'user',
   },
 }, { timestamps: true }); // Automatically adds createdAt and updatedAt fields
 
@@ -65,11 +70,15 @@ export async function POST(request: NextRequest) {
     await connectToDatabase();
 
     // Get the request body
-    const { name, email, password } = await request.json();
+    const { name, email, password, role } = await request.json();
 
     // --- Input Validation ---
-    if (!name || !email || !password) {
-      return NextResponse.json({ message: 'Missing required fields: name, email, or password.' }, { status: 400 });
+    if (!name || !email || !password || !role) {
+      return NextResponse.json({ message: 'Missing required fields: name, email, password, or role.' }, { status: 400 });
+    }
+
+    if (!['user', 'admin', 'vendor'].includes(role)) {
+      return NextResponse.json({ message: 'Invalid role specified.' }, { status: 400 });
     }
 
     // --- Check for Existing User ---
@@ -86,6 +95,7 @@ export async function POST(request: NextRequest) {
       name,
       email,
       password: hashedPassword,
+      role,
     });
 
     await newUser.save();

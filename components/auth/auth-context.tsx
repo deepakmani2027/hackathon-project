@@ -9,6 +9,7 @@ export type AuthUser = {
   id: string
   email: string
   name?: string
+  role?: 'user' | 'admin' | 'vendor'
 }
 
 type AuthContextType = {
@@ -17,7 +18,7 @@ type AuthContextType = {
   loading: boolean
   isAuthenticated: boolean
   login: (email: string, password: string) => Promise<{ ok: true, user: AuthUser } | { ok: false; message: string }>
-  signup: (name: string, email: string, password: string) => Promise<{ ok: true } | { ok: false; message: string }>
+  signup: (name: string, email: string, password: string, role: 'user' | 'admin' | 'vendor') => Promise<{ ok: true } | { ok: false; message: string }>
   logout: () => void
 }
 
@@ -93,12 +94,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // --- UPDATED SIGNUP FUNCTION ---
-  const signup = React.useCallback(async (name: string, email: string, password: string) => {
+  const signup = React.useCallback(async (name: string, email: string, password: string, role: 'user' | 'admin' | 'vendor') => {
     try {
       const response = await fetch('/api/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, password }),
+        body: JSON.stringify({ name, email, password, role }),
       });
 
       const data = await response.json();
