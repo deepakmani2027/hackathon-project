@@ -1,83 +1,109 @@
 import mongoose from 'mongoose';
 import { NextRequest, NextResponse } from 'next/server';
-import {ItemSchema} from '@/lib/types';
+
 // --- Classification Logic (remains the same) ---
 function autoClassify(item: { name: string, notes?: string, category: string, condition: string, ageMonths: number }) {
-  const { name, notes, category, condition, ageMonths } = item;
-  const lowerName = name.toLowerCase();
-  const lowerNotes = notes?.toLowerCase() || "";
+ const { name, notes, category, condition, ageMonths } = item;
+ const lowerName = name.toLowerCase();
+ const lowerNotes = notes?.toLowerCase() || "";
 
-  if (category === "Battery" || lowerName.includes("acid") || lowerNotes.includes("acid")) {
-    return { type: "Hazardous", notes: "Contains hazardous materials." };
-  }
+ if (category === "Battery" || lowerName.includes("acid") || lowerNotes.includes("acid")) {
+  return { type: "Hazardous", notes: "Contains hazardous materials." };
+ }
 
-  const isPotentiallyReusable = ["Computer", "Projector", "Lab Equipment", "Mobile Device", "Accessory"].includes(category);
-  const isGoodCondition = ["Good", "Fair"].includes(condition);
-  if (isPotentiallyReusable && isGoodCondition && ageMonths < 48) {
-    return { type: "Reusable", notes: "Item may be suitable for reuse." };
-  }
+ const isPotentiallyReusable = ["Computer", "Projector", "Lab Equipment", "Mobile Device", "Accessory"].includes(category);
+ const isGoodCondition = ["Good", "Fair"].includes(condition);
+ if (isPotentiallyReusable && isGoodCondition && ageMonths < 48) {
+  return { type: "Reusable", notes: "Item may be suitable for reuse." };
+ }
 
-  return { type: "Recyclable", notes: "" };
+ return { type: "Recyclable", notes: "" };
 }
 
 const ClassificationSchema = new mongoose.Schema({
-  type: { type: String, enum: ["Recyclable", "Reusable", "Hazardous"], required: true },
-  notes: { type: String, default: '' },
+ type: { type: String, enum: ["Recyclable", "Reusable", "Hazardous"], required: true },
+ notes: { type: String, default: '' },
 }, { _id: false });
 
 // --- Item Schema and Model (remains the same) ---
+const ItemSchema = new mongoose.Schema({
+ name: { type: String, required: true, trim: true },
+ department: { type: String, required: true },
+ category: { type: String, required: true },
+ ageMonths: { type: Number, required: true },
+ condition: { type: String, required: true },
+ notes: { type: String, trim: true },
+ classification: { type: ClassificationSchema, required: true },
+ status: { type: String, default: "Reported" },
+ qrId: { type: String },
+ createdBy: { type: String, required: true, index: true },
+  biddingStatus: { type: String, enum: ["open", "closed", "draft"], default: "draft" },
+  startingBid: { type: Number, default: 0 },
+  currentHighestBid: { type: Number, default: 0 },
+  biddingEndDate: { type: Date },
+  winningBidderId: { type: String, default: null },
+}, { timestamps: true });
 
 const Item = mongoose.models.Item || mongoose.model('Item', ItemSchema);
 
 // --- Database Connection (remains the same) ---
 async function connectToDatabase() {
-  if (mongoose.connection.readyState >= 1) return;
-  const mongoUri = process.env.MONGODB_URI;
-  if (!mongoUri) throw new Error('MONGODB_URI is not defined.');
-  return mongoose.connect(mongoUri);
+ if (mongoose.connection.readyState >= 1) return;
+ const mongoUri = process.env.MONGODB_URI;
+ if (!mongoUri) throw new Error('MONGODB_URI is not defined.');
+ return mongoose.connect(mongoUri);
 }
 
 // --- API Handler to CREATE a new item ---
 export async function POST(request: NextRequest) {
-  try {
-    await connectToDatabase();
-    const body = await request.json();
+ try {
+  await connectToDatabase();
+  const body = await request.json();
 
-    // --- STEP 1 & 2: Explicitly deconstruct ONLY the expected fields from the body ---
-    const { name, department, category, ageMonths, condition, notes, createdBy } = body;
+    // --- FIX 1: Deconstruct ALL fields from the request body, including bidding info ---
+    const { name, department, category, ageMonths, condition, notes, createdBy, biddingStatus, startingBid, biddingEndDate } = body;
 
-    if (!name || !department || !category || !createdBy) {
-      return NextResponse.json({ message: 'Missing required fields, including createdBy.' }, { status: 400 });
-    }
+  if (!name || !department || !category || !createdBy) {
+   return NextResponse.json({ message: 'Missing required fields, including createdBy.' }, { status: 400 });
+  }
 
-    // --- STEP 3: Build the new item data object from the deconstructed variables ---
-    const newItemData = {
+  const newItemData: any = {
       name,
       department,
       category,
-      ageMonths: Number(ageMonths) || 0, // Ensure ageMonths is a number
+      ageMonths: Number(ageMonths) || 0,
       condition,
       notes,
       createdBy,
-      classification: autoClassify({ name, notes, category, condition, ageMonths: Number(ageMonths) || 0 }),
-      status: "Reported",
-      qrId: `qr-${Date.now()}`
-    };
-    console.log('Creating new item:', newItemData);
-    const newItem = new Item(newItemData);
-    await newItem.save();
+   classification: autoClassify({ name, notes, category, condition, ageMonths: Number(ageMonths) || 0 }),
+   status: "Reported",
+   qrId: `qr-${Date.now()}`
+  };
 
-    return NextResponse.json(newItem, { status: 201 });
-  } catch (error) {
-    console.error('POST /api/items Error:', error);
-    if (error instanceof mongoose.Error.ValidationError) {
-        return NextResponse.json({ message: error.message, errors: error.errors }, { status: 400 });
-    }
-    return NextResponse.json({ message: 'An internal server error occurred.' }, { status: 500 });
-  }
+    // --- FIX 2: If the item is biddable, add all the necessary auction fields ---
+    if (biddingStatus === "open") {
+        newItemData.biddingStatus = "open";
+        newItemData.startingBid = Number(startingBid) || 0;
+        newItemData.currentHighestBid = Number(startingBid) || 0; // The initial highest bid is the starting bid
+        newItemData.biddingEndDate = biddingEndDate ? new Date(biddingEndDate) : null;
+    }
+
+  const newItem = new Item(newItemData);
+  await newItem.save();
+
+  return NextResponse.json(newItem, { status: 201 });
+ } catch (error) {
+  console.error('POST /api/items Error:', error);
+  if (error instanceof mongoose.Error.ValidationError) {
+    return NextResponse.json({ message: error.message, errors: error.errors }, { status: 400 });
+  }
+  return NextResponse.json({ message: 'An internal server error occurred.' }, { status: 500 });
+ }
 }
 
 // --- GET, DELETE, and PATCH handlers remain the same ---
+
+// --- GET, DELETE, and PATCH handlers would also go here ---
 export async function GET(request: NextRequest) {
   try {
     await connectToDatabase();

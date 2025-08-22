@@ -2,110 +2,99 @@ import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import { NextRequest, NextResponse } from 'next/server';
 
-// --- User Schema and Model ---
-// This defines the structure of the user document in MongoDB.
-// We create a model only if it doesn't already exist to prevent errors during hot-reloading.
+// --- User Schema and Model with Vendor Fields ---
 const UserSchema = new mongoose.Schema({
-  name: {
-    type: String,
-    required: [true, 'Please provide a name.'],
-    trim: true,
-  },
-  email: {
-    type: String,
-    required: [true, 'Please provide an email.'],
-    unique: true,
-    match: [
-      /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/,
-      'Please provide a valid email address.',
-    ],
-  },
-  password: {
-    type: String,
-    required: [true, 'Please provide a password.'],
-    minlength: 6,
-  },
+  name: {
+    type: String,
+    required: [true, 'Please provide a name.'],
+    trim: true,
+  },
+  email: {
+    type: String,
+    required: [true, 'Please provide an email.'],
+    unique: true,
+    match: [
+      /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/,
+      'Please provide a valid email address.',
+    ],
+  },
+  password: {
+    type: String,
+    required: [true, 'Please provide a password.'],
+    minlength: 6,
+  },
   role: {
     type: String,
-    enum: ['user', 'admin', 'vendor'],
+    enum: ['user', 'vendor', 'admin'],
+    required: true,
     default: 'user',
   },
-}, { timestamps: true }); // Automatically adds createdAt and updatedAt fields
+  // --- FIX: Added fields to store vendor-specific information ---
+  contact: { 
+    type: String,
+    default: '' 
+  },
+  certified: { 
+    type: Boolean, 
+    default: false 
+  },
+}, { timestamps: true });
 
 const User = mongoose.models.User || mongoose.model('User', UserSchema);
 
-// --- MongoDB Connection ---
-// This function establishes a connection to your MongoDB database.
-// It's good practice to cache the connection to reuse it across requests.
-
-// FIX: Explicitly type cachedDb to avoid the 'any' type error.
-let cachedDb: typeof mongoose | null = null;
-
+// --- Database Connection ---
 async function connectToDatabase() {
-  if (cachedDb) {
-    return cachedDb;
-  }
-  try {
-    // FIX: Check if the environment variable exists to prevent passing 'undefined' to connect.
-    const mongoUri = process.env.MONGODB_URI;
-    if (!mongoUri) {
-      throw new Error('MONGODB_URI is not defined in environment variables.');
-    }
-
-    const db = await mongoose.connect(mongoUri);
-    console.log("Successfully connected to MongoDB.");
-    cachedDb = db;
-    return db;
-  } catch (error) {
-    console.error("Error connecting to MongoDB:", error);
-    throw new Error("Could not connect to database.");
-  }
+  if (mongoose.connection.readyState >= 1) return;
+  const mongoUri = process.env.MONGODB_URI;
+  if (!mongoUri) {
+    throw new Error('MONGODB_URI is not defined in environment variables.');
+  }
+  return mongoose.connect(mongoUri);
 }
 
 // --- API Handler for POST requests ---
-// In the App Router, we export a named function for each HTTP method.
-// FIX: Use NextRequest for better type safety with the request object.
 export async function POST(request: NextRequest) {
-  try {
-    await connectToDatabase();
+  try {
+    await connectToDatabase();
 
-    // Get the request body
-    const { name, email, password, role } = await request.json();
+    // --- FIX: Destructure all possible fields from the body ---
+    const { name, email, password, role, vendorName, vendorEmail, vendorPhone } = await request.json();
 
-    // --- Input Validation ---
-    if (!name || !email || !password || !role) {
-      return NextResponse.json({ message: 'Missing required fields: name, email, password, or role.' }, { status: 400 });
+    if (!name || !email || !password || !role) {
+      return NextResponse.json({ message: 'Missing required fields.' }, { status: 400 });
+    }
+    if (role === 'vendor' && (!vendorName || !vendorEmail)) {
+        return NextResponse.json({ message: 'Vendor name and email are required for vendor accounts.' }, { status: 400 });
     }
 
-    if (!['user', 'admin', 'vendor'].includes(role)) {
-      return NextResponse.json({ message: 'Invalid role specified.' }, { status: 400 });
-    }
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return NextResponse.json({ message: 'An account with this email already exists.' }, { status: 409 });
+    }
 
-    // --- Check for Existing User ---
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return NextResponse.json({ message: 'An account with this email already exists.' }, { status: 409 });
-    }
+    const hashedPassword = await bcrypt.hash(password, 12);
 
-    // --- Password Hashing ---
-    const hashedPassword = await bcrypt.hash(password, 12);
-
-    // --- Create and Save New User ---
-    const newUser = new User({
-      name,
-      email,
-      password: hashedPassword,
+    // --- FIX: Build the newUser object based on the role ---
+    const newUserPayload: any = {
+      name,
+      email,
+      password: hashedPassword,
       role,
-    });
+    };
 
-    await newUser.save();
+    if (role === 'vendor') {
+        newUserPayload.name = vendorName; // Use the specific vendor name
+        newUserPayload.contact = vendorEmail; // Use email as the primary contact
+        // The 'certified' field will use its default value of 'false'
+    }
 
-    // --- Success Response ---
-    return NextResponse.json({ message: 'Account created successfully.' }, { status: 201 });
+    const newUser = new User(newUserPayload);
+    await newUser.save();
 
-  } catch (error) {
-    console.error('Signup API Error:', error);
-    // Send a generic error message to the client
-    return NextResponse.json({ message: 'An internal server error occurred.' }, { status: 500 });
-  }
+    return NextResponse.json({ message: 'Account created successfully.' }, { status: 201 });
+
+  } catch (error) {
+    console.error('Signup API Error:', error);
+    return NextResponse.json({ message: 'An internal server error occurred.' }, { status: 500 });
+  }
 }
