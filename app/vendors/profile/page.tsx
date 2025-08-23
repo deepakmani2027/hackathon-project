@@ -41,7 +41,7 @@ export default function VendorProfilePage() {
         setLoading(true);
         setError(null);
         // --- FIX: Convert the user.id object to a string before sending it in the URL ---
-         const response = await fetch(`/api/vendors/profile?vendorId=${user.id.toString()}`);
+         const response = await fetch(`/api/vendors/profile?vendorId=${user._id.toString()}`);
         if (response.ok) {
           const data = await response.json();
           setVendor(data);

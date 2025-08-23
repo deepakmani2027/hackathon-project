@@ -5,7 +5,7 @@ import { jwtVerify, SignJWT } from "jose"
 
 // --- FIX: Added 'role' to the AuthUser type ---
 export type AuthUser = {
-  id: string
+  _id: string
   email: string
   name?: string
   role: 'user' | 'vendor' | 'admin'

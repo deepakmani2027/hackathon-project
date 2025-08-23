@@ -19,13 +19,13 @@ export default function VendorDashboardPage() {
 
   useEffect(() => {
     const fetchStats = async () => {
-      if (!user?.id) {
+      if (!user?._id) {
         setLoading(false);
         return;
       }
       try {
         setLoading(true);
-        const response = await fetch(`/api/vendors/stats?vendorId=${user.id}`);
+        const response = await fetch(`/api/vendors/stats?vendorId=${user._id}`);
         if (response.ok) {
           const data = await response.json();
           setStats(data);
@@ -60,7 +60,7 @@ export default function VendorDashboardPage() {
       </header>
 
       {/* KPI Cards Section */}
-      <div className="grid gap-4 md:gap-6 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-8 md:gap-12 grid-cols-1 sm:grid-cols-4 xl:grid-cols-6">
         <KpiCard title="Auctions Won" value={stats.auctionsWon} icon={<Handshake className="w-8 h-8" />} gradient="from-green-500 to-green-600" />
         <KpiCard title="Active Bids" value={stats.activeBids} icon={<Package className="w-8 h-8" />} gradient="from-blue-500 to-blue-600" />
         <KpiCard title="Scheduled Pickups" value={stats.pickupsScheduled} icon={<CalendarCheck className="w-8 h-8" />} gradient="from-orange-500 to-orange-600" />

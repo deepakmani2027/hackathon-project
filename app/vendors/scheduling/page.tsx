@@ -33,14 +33,14 @@ function SchedulingPageLayout() {
 
   useEffect(() => {
     const fetchPickups = async () => {
-      if (!user?.id) {
+      if (!user?._id) {
         setLoading(false);
         return;
       }
       try {
         setLoading(true);
         setError(null);
-        const response = await fetch(`/api/pickups?vendorId=${user.id}`);
+        const response = await fetch(`/api/pickups?vendorId=${user._id}`);
         if (response.ok) {
           setPickups(await response.json());
         } else {

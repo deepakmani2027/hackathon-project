@@ -1,73 +1,67 @@
 import mongoose from 'mongoose';
 import { NextRequest, NextResponse } from 'next/server';
+import { ItemSchema } from '@/lib/types';
 
-// --- Classification Logic (remains the same) ---
-function autoClassify(item: { name: string, notes?: string, category: string, condition: string, ageMonths: number }) {
- const { name, notes, category, condition, ageMonths } = item;
- const lowerName = name.toLowerCase();
- const lowerNotes = notes?.toLowerCase() || "";
+// --- Classification Logic ---
+function autoClassify(item: {
+  name: string,
+  notes?: string,
+  category: string,
+  condition: string,
+  ageMonths: number
+}) {
+  const { name, notes, category, condition, ageMonths } = item;
+  const lowerName = name.toLowerCase();
+  const lowerNotes = notes?.toLowerCase() || "";
 
- if (category === "Battery" || lowerName.includes("acid") || lowerNotes.includes("acid")) {
-  return { type: "Hazardous", notes: "Contains hazardous materials." };
- }
+  if (category === "Battery" || lowerName.includes("acid") || lowerNotes.includes("acid")) {
+    return { type: "Hazardous", notes: "Contains hazardous materials." };
+  }
 
- const isPotentiallyReusable = ["Computer", "Projector", "Lab Equipment", "Mobile Device", "Accessory"].includes(category);
- const isGoodCondition = ["Good", "Fair"].includes(condition);
- if (isPotentiallyReusable && isGoodCondition && ageMonths < 48) {
-  return { type: "Reusable", notes: "Item may be suitable for reuse." };
- }
+  const isPotentiallyReusable = ["Computer", "Projector", "Lab Equipment", "Mobile Device", "Accessory"].includes(category);
+  const isGoodCondition = ["Good", "Fair"].includes(condition);
+  if (isPotentiallyReusable && isGoodCondition && ageMonths < 48) {
+    return { type: "Reusable", notes: "Item may be suitable for reuse." };
+  }
 
- return { type: "Recyclable", notes: "" };
+  return { type: "Recyclable", notes: "" };
 }
-
-const ClassificationSchema = new mongoose.Schema({
- type: { type: String, enum: ["Recyclable", "Reusable", "Hazardous"], required: true },
- notes: { type: String, default: '' },
-}, { _id: false });
-
-// --- Item Schema and Model (remains the same) ---
-const ItemSchema = new mongoose.Schema({
- name: { type: String, required: true, trim: true },
- department: { type: String, required: true },
- category: { type: String, required: true },
- ageMonths: { type: Number, required: true },
- condition: { type: String, required: true },
- notes: { type: String, trim: true },
- classification: { type: ClassificationSchema, required: true },
- status: { type: String, default: "Reported" },
- qrId: { type: String },
- createdBy: { type: String, required: true, index: true },
-  biddingStatus: { type: String, enum: ["open", "closed", "draft"], default: "draft" },
-  startingBid: { type: Number, default: 0 },
-  currentHighestBid: { type: Number, default: 0 },
-  biddingEndDate: { type: Date },
-  winningBidderId: { type: String, default: null },
-}, { timestamps: true });
 
 const Item = mongoose.models.Item || mongoose.model('Item', ItemSchema);
 
-// --- Database Connection (remains the same) ---
 async function connectToDatabase() {
- if (mongoose.connection.readyState >= 1) return;
- const mongoUri = process.env.MONGODB_URI;
- if (!mongoUri) throw new Error('MONGODB_URI is not defined.');
- return mongoose.connect(mongoUri);
+  if (mongoose.connection.readyState >= 1) return;
+  const mongoUri = process.env.MONGODB_URI;
+  if (!mongoUri) throw new Error('MONGODB_URI is not defined.');
+  return mongoose.connect(mongoUri);
 }
 
-// --- API Handler to CREATE a new item ---
+// --- CREATE ---
 export async function POST(request: NextRequest) {
- try {
-  await connectToDatabase();
-  const body = await request.json();
+  try {
+    await connectToDatabase();
+    const body = await request.json();
+    const {
+      name,
+      department,
+      category,
+      ageMonths,
+      condition,
+      notes,
+      createdBy,
+      biddingStatus,
+      startingBid,
+      biddingEndDate,
+    } = body;
 
-    // --- FIX 1: Deconstruct ALL fields from the request body, including bidding info ---
-    const { name, department, category, ageMonths, condition, notes, createdBy, biddingStatus, startingBid, biddingEndDate } = body;
+    if (!name || !department || !category || !createdBy) {
+      return NextResponse.json(
+        { message: 'Missing required fields, including createdBy.' },
+        { status: 400 }
+      );
+    }
 
-  if (!name || !department || !category || !createdBy) {
-   return NextResponse.json({ message: 'Missing required fields, including createdBy.' }, { status: 400 });
-  }
-
-  const newItemData: any = {
+    const newItemData: any = {
       name,
       department,
       category,
@@ -75,56 +69,68 @@ export async function POST(request: NextRequest) {
       condition,
       notes,
       createdBy,
-   classification: autoClassify({ name, notes, category, condition, ageMonths: Number(ageMonths) || 0 }),
-   status: "Reported",
-   qrId: `qr-${Date.now()}`
-  };
+      classification: autoClassify({
+        name,
+        notes,
+        category,
+        condition,
+        ageMonths: Number(ageMonths) || 0,
+      }),
+      status: "Reported",
+      qrId: `qr-${Date.now()}`,
+    };
 
-    // --- FIX 2: If the item is biddable, add all the necessary auction fields ---
     if (biddingStatus === "open") {
-        newItemData.biddingStatus = "open";
-        newItemData.startingBid = Number(startingBid) || 0;
-        newItemData.currentHighestBid = Number(startingBid) || 0; // The initial highest bid is the starting bid
-        newItemData.biddingEndDate = biddingEndDate ? new Date(biddingEndDate) : null;
+      newItemData.biddingStatus = "open";
+      newItemData.startingBid = Number(startingBid) || 0;
+      newItemData.currentHighestBid = Number(startingBid) || 0;
+      newItemData.biddingEndDate = biddingEndDate ? new Date(biddingEndDate) : null;
     }
 
-  const newItem = new Item(newItemData);
-  await newItem.save();
+    const newItem = new Item(newItemData);
+    await newItem.save();
 
-  return NextResponse.json(newItem, { status: 201 });
- } catch (error) {
-  console.error('POST /api/items Error:', error);
-  if (error instanceof mongoose.Error.ValidationError) {
-    return NextResponse.json({ message: error.message, errors: error.errors }, { status: 400 });
+    // Optional notify
+    try {
+      // @ts-ignore
+      if (typeof BroadcastChannel !== 'undefined') {
+        const bc = new BroadcastChannel('ew-items');
+        bc.postMessage({ type: 'created', id: String(newItem._id) });
+        bc.close();
+      }
+    } catch {}
+
+    return NextResponse.json(newItem, { status: 201 });
+  } catch (error) {
+    console.error('POST /api/items Error:', error);
+    if (error instanceof mongoose.Error.ValidationError) {
+      return NextResponse.json({ message: error.message, errors: error.errors }, { status: 400 });
+    }
+    return NextResponse.json({ message: 'An internal server error occurred.' }, { status: 500 });
   }
-  return NextResponse.json({ message: 'An internal server error occurred.' }, { status: 500 });
- }
 }
 
-// --- GET, DELETE, and PATCH handlers remain the same ---
-
-// --- GET, DELETE, and PATCH handlers would also go here ---
+// --- LIST (optionally by userEmail) ---
 export async function GET(request: NextRequest) {
   try {
     await connectToDatabase();
-
-    // Get the search parameters from the request URL
     const { searchParams } = new URL(request.url);
     const userEmail = searchParams.get('userEmail');
 
-    // Build a query object. If userEmail is provided, filter by it.
     const query = userEmail ? { createdBy: userEmail } : {};
-
-    // Find the items, sort by newest first
     const items = await Item.find(query).sort({ createdAt: -1 });
-    console.log('Fetched items:',items,'items found');
-    return NextResponse.json(items, { status: 200 });
 
+    return NextResponse.json(items, { status: 200 });
   } catch (error) {
     console.error('GET /api/items Error:', error);
-    return NextResponse.json({ message: 'An internal server error occurred while fetching items.' }, { status: 500 });
+    return NextResponse.json(
+      { message: 'An internal server error occurred while fetching items.' },
+      { status: 500 }
+    );
   }
 }
+
+// --- DELETE (owner only) ---
 export async function DELETE(request: NextRequest) {
   try {
     await connectToDatabase();
@@ -133,14 +139,18 @@ export async function DELETE(request: NextRequest) {
     const userEmail = searchParams.get('userEmail');
 
     if (!itemId || !userEmail) {
-      return NextResponse.json({ message: 'Item ID and user email are required for deletion.' }, { status: 400 });
+      return NextResponse.json(
+        { message: 'Item ID and user email are required for deletion.' },
+        { status: 400 }
+      );
     }
 
-    // Find and delete the item, ensuring the user owns it
     const deletedItem = await Item.findOneAndDelete({ _id: itemId, createdBy: userEmail });
-
     if (!deletedItem) {
-      return NextResponse.json({ message: 'Item not found or user not authorized to delete.' }, { status: 404 });
+      return NextResponse.json(
+        { message: 'Item not found or user not authorized to delete.' },
+        { status: 404 }
+      );
     }
 
     return NextResponse.json({ message: 'Item deleted successfully.' }, { status: 200 });
@@ -149,22 +159,28 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ message: 'An internal server error occurred.' }, { status: 500 });
   }
 }
+
+// --- PATCH (owner only) ---
 export async function PATCH(request: NextRequest) {
   try {
     await connectToDatabase();
     const body = await request.json();
     const { id, userEmail, ...updateData } = body;
     if (!id || !userEmail) {
-      return NextResponse.json({ message: 'Item ID and user email are required for update.' }, { status: 400 });
+      return NextResponse.json(
+        { message: 'Item ID and user email are required for update.' },
+        { status: 400 }
+      );
     }
 
-    // Fetch the existing item to preserve fields not being updated
     const existingItem = await Item.findOne({ _id: id, createdBy: userEmail });
     if (!existingItem) {
-      return NextResponse.json({ message: 'Item not found or user not authorized to update.' }, { status: 404 });
+      return NextResponse.json(
+        { message: 'Item not found or user not authorized to update.' },
+        { status: 404 }
+      );
     }
 
-    // Normalize and enforce EwItem schema
     const normalized = {
       name: updateData.name ?? existingItem.name,
       department: updateData.department ?? existingItem.department,
@@ -172,13 +188,17 @@ export async function PATCH(request: NextRequest) {
       ageMonths: typeof updateData.ageMonths === 'number' ? updateData.ageMonths : existingItem.ageMonths,
       condition: updateData.condition ?? existingItem.condition,
       notes: updateData.notes ?? existingItem.notes,
-      classification: updateData.classification ?? existingItem.classification ?? autoClassify({
-        name: updateData.name ?? existingItem.name,
-        notes: updateData.notes ?? existingItem.notes,
-        category: updateData.category ?? existingItem.category,
-        condition: updateData.condition ?? existingItem.condition,
-        ageMonths: typeof updateData.ageMonths === 'number' ? updateData.ageMonths : existingItem.ageMonths,
-      }),
+      classification:
+        updateData.classification ??
+        existingItem.classification ??
+        autoClassify({
+          name: updateData.name ?? existingItem.name,
+          notes: updateData.notes ?? existingItem.notes,
+          category: updateData.category ?? existingItem.category,
+          condition: updateData.condition ?? existingItem.condition,
+          ageMonths:
+            typeof updateData.ageMonths === 'number' ? updateData.ageMonths : existingItem.ageMonths,
+        }),
       status: updateData.status ?? existingItem.status ?? 'Reported',
       qrId: existingItem.qrId,
       createdBy: existingItem.createdBy,
@@ -189,7 +209,6 @@ export async function PATCH(request: NextRequest) {
       disposedBy: updateData.disposedBy ?? existingItem.disposedBy,
     };
 
-    // Update the item
     const updatedItem = await Item.findByIdAndUpdate(
       id,
       { $set: normalized },

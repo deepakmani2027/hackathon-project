@@ -1,81 +1,67 @@
-import mongoose from 'mongoose';
-import { NextRequest, NextResponse } from 'next/server';
+import mongoose from "mongoose";
+import { NextRequest, NextResponse } from "next/server";
+import { ItemSchema } from "@/lib/types";
 
-// --- Schemas ---
-const BidSchema = new mongoose.Schema({
-  itemId: { type: mongoose.Schema.Types.ObjectId, ref: 'Item', required: true },
-  vendorId: { type: String, required: true },
-  bidAmount: { type: Number, required: true },
-}, { timestamps: true });
+const Item = mongoose.models.Item || mongoose.model("Item", ItemSchema);
 
-const ItemSchema = new mongoose.Schema({
-    biddingStatus: { type: String },
-    biddingEndDate: { type: Date },
-    currentHighestBid: { type: Number },
-    winningBidderId: { type: String },
-});
-
-const Bid = mongoose.models.Bid || mongoose.model('Bid', BidSchema);
-const Item = mongoose.models.Item || mongoose.model('Item', ItemSchema);
-
-// --- Database Connection ---
-async function connectToDatabase() {
+async function connect() {
   if (mongoose.connection.readyState >= 1) return;
   const mongoUri = process.env.MONGODB_URI;
-  if (!mongoUri) throw new Error('MONGODB_URI is not defined.');
-  return mongoose.connect(mongoUri);
+  if (!mongoUri) throw new Error("MONGODB_URI is not defined.");
+  await mongoose.connect(mongoUri);
 }
 
-// --- POST: Place a new bid on an item ---
-export async function POST(request: NextRequest) {
-  const session = await mongoose.startSession();
-  session.startTransaction();
+function normalizeId(id: unknown): string {
+  if (!id) return "";
+  if (typeof id === "string") return id;
+  if (typeof id === "object") {
+    const anyId = id as any;
+    if (typeof anyId.toHexString === "function") return anyId.toHexString();
+    if (anyId.buffer) {
+      const bytes = Object.values(anyId.buffer) as number[];
+      const hex = bytes.map((b) => Number(b).toString(16).padStart(2, "0")).join("");
+      return hex || "";
+    }
+    if (typeof anyId.toString === "function") {
+      const s = anyId.toString();
+      if (s && s !== "[object Object]") return s;
+    }
+  }
+  return String(id);
+}
+
+export async function POST(req: NextRequest) {
   try {
-    await connectToDatabase();
-    const { itemId, vendorId, bidAmount } = await request.json();
+    await connect();
+    const { itemId, vendorId, bidAmount } = await req.json();
 
-    if (!itemId || !vendorId || !bidAmount) {
-      return NextResponse.json({ message: 'Missing required fields.' }, { status: 400 });
+    const vendorIdStr = normalizeId(vendorId);
+
+    if (!itemId || !vendorIdStr || typeof bidAmount !== "number") {
+      return NextResponse.json({ message: "Missing or invalid fields." }, { status: 400 });
     }
 
-    const item = await Item.findById(itemId).session(session);
-
+    const item = await Item.findById(itemId);
     if (!item) {
-      throw new Error('Auction item not found.');
-    }
-    if (item.biddingStatus !== 'open') {
-      throw new Error('This auction is no longer open for bidding.');
-    }
-    if (new Date() > new Date(item.biddingEndDate)) {
-      throw new Error('This auction has already ended.');
-    }
-    if (bidAmount <= item.currentHighestBid) {
-      throw new Error('Your bid must be higher than the current highest bid.');
+      return NextResponse.json({ message: "Item not found." }, { status: 404 });
     }
 
-    const newBid = new Bid({ itemId, vendorId, bidAmount });
-    await newBid.save({ session });
+    if (item.biddingStatus !== "open") {
+      return NextResponse.json({ message: "Auction is not open." }, { status: 400 });
+    }
 
+    if (bidAmount <= (item.currentHighestBid || 0)) {
+      return NextResponse.json({ message: "Bid must be higher than current highest bid." }, { status: 400 });
+    }
+
+    // Update highest bid + winner
     item.currentHighestBid = bidAmount;
-    item.winningBidderId = vendorId;
-    await item.save({ session });
+    item.winningBidderId = vendorIdStr;
+    await item.save();
 
-    await session.commitTransaction();
-
-    return NextResponse.json({ message: 'Bid placed successfully!', newHighestBid: bidAmount }, { status: 201 });
-
-  } catch (error) {
-    await session.abortTransaction();
-    console.error('POST /api/bids Error:', error);
-
-    // --- FIX: Check the type of the error before accessing its properties ---
-    let errorMessage = 'An internal server error occurred.';
-    if (error instanceof Error) {
-        errorMessage = error.message;
-    }
-    
-    return NextResponse.json({ message: errorMessage }, { status: 500 });
-  } finally {
-    session.endSession();
+    return NextResponse.json({ success: true, message: "Bid placed successfully." }, { status: 200 });
+  } catch (e: any) {
+    console.error("POST /api/bids Error:", e);
+    return NextResponse.json({ message: e.message || "Server error." }, { status: 500 });
   }
 }
